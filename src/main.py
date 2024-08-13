@@ -27,7 +27,7 @@ def main(url, filepath):
         event_ids = list(set(event_ids) - set(existing_event_ids))
         if event_ids:
             event_log.write_event_ids(filepath, event_ids)
-            emailer.send_email(["test"])
+            emailer.send_email(event_ids)
         else:
             logger.info("No new event IDs")
     else:

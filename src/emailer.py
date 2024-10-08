@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 
 def create_email_body(ids):
-    header = "New Volo events found!"
+    header = "New Volo event(s) found!"
     links = ["https://www.volosports.com/d/" + id for id in ids]
     body = header + "\n    " + "\n\n    ".join(links)
     return body

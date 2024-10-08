@@ -12,8 +12,9 @@ EMAIL_RECIPIENT = "lad.sahger@gmail.com"
 APP_PASSWORD = os.environ.get('APP_PASSWORD')
 
 # File config
-FILEPATH_LOG = "log/log.txt"
+FILEPATH_LOG = "log/log_{date}.txt"
 FILEPATH_EVENT_LOG = "data/event_log.csv"
 
 # Main config
 RETRY_LIMIT = 3
+SLEEP_TIME = 1800

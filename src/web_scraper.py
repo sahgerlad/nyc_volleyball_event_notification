@@ -44,10 +44,10 @@ def get_event_elements(query_element):
 
 
 def get_event_ids(driver, url):
-    logger.info(f"Getting event IDs from url: {url}")
+    logger.info(f"Getting events from url: {url}")
     query_element = get_query_element(driver, url)
     event_elements = get_event_elements(query_element)
-    logger.info(f"Found {len(event_elements)} events.")
+    logger.info(f"Found {len(event_elements)} event(s).")
     event_ids = []
     if len(event_elements):
         for idx in range(len(event_elements)):

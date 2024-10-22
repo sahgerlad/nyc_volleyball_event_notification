@@ -52,9 +52,11 @@ if __name__ == "__main__":
         logger.info("Starting the scraping process...")
         try:
             main(config.URL, config.FILEPATH_EVENT_LOG)
+            retry_counter = 0
         except Exception as e:
-            logger.error(e)
             retry_counter += 1
+            logger.info(f"Execution failed. Incrementing retry counter: {retry_counter}")
+            logger.error(e)
             if retry_counter == config.RETRY_LIMIT:
                 logger.fatal("Retry limit exceeded. Exiting program.")
                 sys.exit(1)

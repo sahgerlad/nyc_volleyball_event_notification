@@ -53,6 +53,8 @@ if __name__ == "__main__":
         try:
             main(config.URL, config.FILEPATH_EVENT_LOG)
             retry_counter = 0
+            logger.info(f"Webscrape completed successfully. Sleeping for {config.SLEEP_TIME // 60} minute(s).")
+            time.sleep(config.SLEEP_TIME)
         except Exception as e:
             retry_counter += 1
             logger.info(f"Execution failed. Incrementing retry counter: {retry_counter}")
@@ -60,5 +62,3 @@ if __name__ == "__main__":
             if retry_counter == config.RETRY_LIMIT:
                 logger.fatal("Retry limit exceeded. Exiting program.")
                 sys.exit(1)
-        logger.info(f"Webscrape completed successfully. Sleeping for {config.SLEEP_TIME // 60} minute(s).")
-        time.sleep(config.SLEEP_TIME)

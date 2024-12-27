@@ -2,7 +2,7 @@ import os
 
 # Web config
 TEST_URL = "https://www.volosports.com/discover?cityName=New%20York%20Metro%20Area&view=SPORTS&subView=DAILY&programTypes%5B%5D=PICKUP&sportNames%5B%5D=Volleyball&venueIds%5B%5D=60ad2493c1e4b9002fdbb04e&venueIds%5B%5D=60ad1c7ca5287c00919ec225&venueIds%5B%5D=601f53343779dc0031b60bef"
-URL = "https://www.volosports.com/discover?cityName=New%20York%20Metro%20Area&view=SPORTS&subView=DAILY&programTypes%5B%5D=PICKUP&sportNames%5B%5D=Volleyball&venueIds%5B%5D=60ad2493c1e4b9002fdbb04e&venueIds%5B%5D=60ad1c7ca5287c00919ec225"
+URL = "https://www.volosports.com/discover?cityName=New%20York%20Metro%20Area&view=SPORTS&subView=DAILY&programTypes%5B%5D=PICKUP&sportNames%5B%5D=Volleyball&venueIds%5B%5D=60ad2493c1e4b9002fdbb04e&venueIds%5B%5D=60ad1c7ca5287c00919ec225&venueIds%5B%5D=64c875b059de744a3615b995&venueIds%5B%5D=60ad250fabc941002fb2f58c"
 
 # Email config
 SMTP_SERVER = "smtp.gmail.com"

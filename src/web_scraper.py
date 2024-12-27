@@ -7,10 +7,11 @@ from selenium.webdriver.common.by import By
 logger = logging.getLogger(__name__)
 
 
-def start_browser():
+def start_browser(headless=False):
     logger.info("Starting browser...")
     chrome_options = Options()
-    chrome_options.add_argument("--headless")
+    if headless:
+        chrome_options.add_argument("--headless")
     driver = webdriver.Chrome(options=chrome_options)
     driver.set_window_size(1920, 1080)
     logger.info("Browser started.")
@@ -43,7 +44,7 @@ def get_event_elements(query_element):
     return event_elements[:-1]
 
 
-def get_event_ids(driver, url):
+def get_event_ids(driver, url: str):
     logger.info(f"Getting events from url: {url}")
     query_element = get_query_element(driver, url)
     event_elements = get_event_elements(query_element)
@@ -51,7 +52,10 @@ def get_event_ids(driver, url):
     event_ids = []
     if len(event_elements):
         for idx in range(len(event_elements)):
-            event_elements[idx].click()
+            for element in event_elements[idx].find_elements(By.CSS_SELECTOR, "div"):
+                if element.text == "Pickup":
+                    element.click()
+                    break
             time.sleep(1)
             event_id = driver.current_url.split("/")[-1]
             event_ids.append(event_id)

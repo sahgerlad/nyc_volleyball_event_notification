@@ -11,7 +11,7 @@ def create_logger(path_log):
     os.makedirs(os.path.dirname(path_log), exist_ok=True)
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(funcName)s - %(levelname)s - %(message)s')
 
     if logger.hasHandlers():
         logger.handlers.clear()
@@ -37,7 +37,7 @@ def main(url, filepath):
         event_ids = list(set(event_ids) - set(existing_event_ids))
         if event_ids:
             event_log.write_event_ids(filepath, event_ids)
-            emailer.send_email(event_ids)
+            emailer.send_email(**emailer.create_email_content_events(event_ids))
         else:
             logger.info("No new event ID(s)")
     else:
@@ -57,8 +57,11 @@ if __name__ == "__main__":
             time.sleep(config.SLEEP_TIME)
         except Exception as e:
             retry_counter += 1
-            logger.info(f"Execution failed. Incrementing retry counter: {retry_counter}")
+            logger.warning(f"Execution failed. Incrementing retry counter: {retry_counter}")
             logger.error(e)
             if retry_counter == config.RETRY_LIMIT:
-                logger.fatal("Retry limit exceeded. Exiting program.")
+                logger.fatal("Retry limit exceeded.")
+                emailer.send_email(**emailer.create_email_content_job_failure(e))
                 sys.exit(1)
+            logger.info(f"Sleeping for {(config.SLEEP_TIME_RETRY / 60):.1f} minutes")
+            time.sleep(config.SLEEP_TIME_RETRY)

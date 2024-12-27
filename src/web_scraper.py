@@ -7,7 +7,7 @@ from selenium.webdriver.common.by import By
 logger = logging.getLogger(__name__)
 
 
-def start_browser(headless=False):
+def start_browser(headless=True):
     logger.info("Starting browser...")
     chrome_options = Options()
     if headless:

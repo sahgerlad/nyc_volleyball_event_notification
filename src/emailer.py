@@ -9,12 +9,11 @@ logger = logging.getLogger(__name__)
 
 def create_email_content_events(ids):
     links = ["https://www.volosports.com/d/" + id for id in ids]
-    links[0] = "    " + links[0]
+    links[0] = "\n    " + links[0]
     return {
         "subject": "Volo: New Event Notification",
         "body": "\n".join([
             "New Volo event(s) found!",
-            "",
             "\n\n    ".join(links)
         ])
     }

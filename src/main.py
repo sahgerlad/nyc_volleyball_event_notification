@@ -31,17 +31,20 @@ def create_logger(path_log):
 
 def main(url, filepath):
     driver = web_scraper.start_browser()
-    event_ids = web_scraper.get_event_ids(driver, url)
-    if event_ids:
-        existing_event_ids = event_log.read_event_ids(filepath)
-        event_ids = list(set(event_ids) - set(existing_event_ids))
-        if event_ids:
-            event_log.write_event_ids(filepath, event_ids)
-            emailer.send_email(**emailer.create_email_content_events(event_ids))
-        else:
-            logger.info("No new event ID(s)")
+    account_login = web_scraper.login_to_account(
+        driver,
+        config.URL_ACCOUNT_LOGIN,
+        config.VOLO_USERNAME,
+        config.VOLO_PASSWORD
+    )
+    event_ids = web_scraper.get_event_ids(driver, url, account_login)
+    existing_event_ids = [] if event_ids else event_log.read_event_ids(filepath)
+    event_ids = list(set(event_ids) - set(existing_event_ids))
+    if not event_ids:
+        logger.info("No new or available event ID(s)")
     else:
-        logger.info("No new event ID(s)")
+        event_log.write_event_ids(filepath, event_ids)
+        emailer.send_email(**emailer.create_email_content_events(event_ids))
     driver.quit()
 
 
@@ -51,7 +54,7 @@ if __name__ == "__main__":
         logger = create_logger(config.FILEPATH_LOG.format(date=dt.date.today().strftime("%Y-%m-%d")))
         logger.info("Starting the scraping process...")
         try:
-            main(config.URL, config.FILEPATH_EVENT_LOG)
+            main(config.URL_QUERY, config.FILEPATH_EVENT_LOG)
             retry_counter = 0
             logger.info(f"Webscrape completed successfully. Sleeping for {config.SLEEP_TIME // 60} minute(s).")
             time.sleep(config.SLEEP_TIME)

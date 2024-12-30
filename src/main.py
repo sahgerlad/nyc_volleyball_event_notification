@@ -50,11 +50,12 @@ def main(url, filepath):
 
 if __name__ == "__main__":
     retry_counter = 0
+    url = config.URL_QUERY
     while True:
         logger = create_logger(config.FILEPATH_LOG.format(date=dt.date.today().strftime("%Y-%m-%d")))
-        logger.info("Starting the scraping process...")
+        logger.info(f"Starting the scraping process on {url}...")
         try:
-            main(config.URL_QUERY, config.FILEPATH_EVENT_LOG)
+            main(url, config.FILEPATH_EVENT_LOG)
             retry_counter = 0
             logger.info(f"Webscrape completed successfully. Sleeping for {config.SLEEP_TIME // 60} minute(s).")
             time.sleep(config.SLEEP_TIME)

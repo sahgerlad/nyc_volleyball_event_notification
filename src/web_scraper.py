@@ -20,7 +20,7 @@ def start_browser(headless=True):
 
 
 def login_to_account(driver, url, volo_account, volo_password):
-    logger.info(f"Logging into account {volo_account}: {url}...")
+    logger.info(f"Logging into Volo account with username {volo_account}: {url}...")
     account_login = False
     driver.execute_script("window.open('');")
     driver.switch_to.window(driver.window_handles[1])
@@ -42,10 +42,10 @@ def login_to_account(driver, url, volo_account, volo_password):
 
 
 def load_query_results_page(driver, url):
-    logger.info(f"Loading Volo query page: {url}...")
+    logger.debug(f"Loading Volo query page: {url}...")
     driver.get(url)
     time.sleep(5)  # Add delay for page to fully load
-    logger.info(f"Volo query page loaded.")
+    logger.debug(f"Volo query page loaded.")
 
 
 def get_query_element(driver):
@@ -60,41 +60,63 @@ def get_query_element(driver):
             return elements[i]
 
 
+def get_page_elements(query_element):
+    page_elements = (
+        query_element
+        .find_elements(By.XPATH, "./*")[-1]
+        .find_elements(By.XPATH, ".//div[@tabindex]")[1:-1]
+    )
+    return page_elements
+
+
+def refresh_elements(driver, url, page, account_login):
+    load_query_results_page(driver, url)
+    query_element = get_query_element(driver)
+    get_page_elements(query_element)[page].click()
+    time.sleep(1)
+    query_element = get_query_element(driver)
+    event_elements = get_event_elements(query_element, account_login)
+    return query_element, event_elements
+
+
 def get_event_elements(query_element, account_login: bool):
     event_elements = query_element.find_elements(By.XPATH, "./*")
-    idx = 0
-    while idx != len(event_elements):
+    valid_event_elements = []
+    for element in event_elements:
         # Remove elements that do not contain an event
-        if "Pickup" not in event_elements[idx].text:
-            event_elements.pop(idx)
+        if "Pickup" not in element.text:
             continue
         # Remove full events (need to be logged in to see event capacity)
         if account_login:
-            event_capacity = event_elements[idx].find_elements(By.XPATH, ".//div[@dir]")[-1].text.split("/")
-            if event_capacity[0] == event_capacity[1]:
-                event_elements.pop(idx)
-                continue
-        idx += 1
-    return event_elements[:-1]
+            event_capacity = element.find_elements(By.XPATH, ".//div[@dir]")[-1].text.split("/")
+            try:
+                if event_capacity[0] == event_capacity[1]:
+                    continue
+            except IndexError:
+                logger.debug(
+                    f"Event capacity could not be found: {element.find_elements(By.XPATH, ".//div[@dir]")[-1].text}"
+                )
+        valid_event_elements.append(element)
+    return valid_event_elements
 
 
 def get_event_ids(driver, url: str, account_login: bool):
     load_query_results_page(driver, url)
     logger.info(f"Getting events...")
-    query_element = get_query_element(driver)
-    event_elements = get_event_elements(query_element, account_login)
-    logger.info(f"Found {len(event_elements)} event(s).")
     event_ids = []
-    if not len(event_elements):
+    query_element = get_query_element(driver)
+    if "No results" in query_element.text:
         return event_ids
-    for idx in range(len(event_elements)):
-        event_elements[idx].find_elements(By.XPATH, ".//div[@dir]")[0].click()
-        time.sleep(1)
-        event_id = driver.current_url.split("/")[-1]
-        event_ids.append(event_id)
-        load_query_results_page(driver, url)
-        query_element = get_query_element(driver)
-        event_elements = get_event_elements(query_element, account_login)
-        logger.info(f"Retrieved event ID: {event_id}")
+    page_elements = get_page_elements(query_element)
+    for page in range(len(page_elements)):
+        _, event_elements = refresh_elements(driver, url, page, account_login)
+        logger.info(f"Found {len(event_elements)} open event(s) on page {page + 1}.")
+        for idx in range(len(event_elements)):
+            event_elements[idx].find_elements(By.XPATH, ".//div[@dir]")[0].click()
+            time.sleep(1)
+            event_id = driver.current_url.split("/")[-1]
+            event_ids.append(event_id)
+            _, event_elements = refresh_elements(driver, url, page, account_login)
+            logger.info(f"Retrieved event ID: {event_id}")
     logger.info("Retrieved all event IDs.")
     return event_ids

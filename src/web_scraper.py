@@ -24,18 +24,21 @@ def login_to_account(driver, url, volo_account, volo_password):
     account_login = False
     driver.execute_script("window.open('');")
     driver.switch_to.window(driver.window_handles[1])
-    driver.get(url)
-    time.sleep(5)
-    driver.find_element(By.ID, "credential").send_keys(volo_account)
-    password_element = driver.find_element(By.ID, "password")
-    password_element.send_keys(volo_password)
-    password_element.send_keys(Keys.RETURN)
-    time.sleep(1)
-    if driver.current_url == url:
-        logger.error(f"Login attempt to Volo account unsuccessful.")
-    else:
-        account_login = True
-        logger.info(f"Login to Volo account successful.")
+    try:
+        driver.get(url)
+        time.sleep(5)
+        driver.find_element(By.ID, "credential").send_keys(volo_account)
+        password_element = driver.find_element(By.ID, "password")
+        password_element.send_keys(volo_password)
+        password_element.send_keys(Keys.RETURN)
+        time.sleep(1)
+        if driver.current_url == url:
+            logger.error(f"Login attempt to Volo account unsuccessful.")
+        else:
+            account_login = True
+            logger.info(f"Login to Volo account successful.")
+    except Exception as e:
+        logger.warning(f"Error when attempting to log into the Volo account: {e}")
     driver.close()
     driver.switch_to.window(driver.window_handles[0])
     return account_login

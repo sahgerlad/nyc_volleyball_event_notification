@@ -41,7 +41,7 @@ def main(url, filepath):
     existing_event_ids = [] if not event_ids else event_log.read_event_ids(filepath)
     event_ids = list(set(event_ids) - set(existing_event_ids))
     if not event_ids:
-        logger.info("No new or available event ID(s)")
+        logger.info("No new open event IDs.")
     else:
         event_log.write_event_ids(filepath, event_ids)
         emailer.send_email(**emailer.create_email_content_events(event_ids))

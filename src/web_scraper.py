@@ -1,5 +1,6 @@
 import logging
 import time
+from datetime import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -103,23 +104,57 @@ def get_event_elements(query_element, account_login: bool):
     return valid_event_elements
 
 
-def get_event_ids(driver, url: str, account_login: bool):
+def parse_event_datetime(date_string, time_range):
+    # Parse date
+    date_object = datetime.strptime(date_string, "%a, %B %d")
+    current_date = datetime.now()
+    date_object = date_object.replace(year=current_date.year)
+    if date_object < current_date:
+        date_object = date_object.replace(year=current_date.year + 1)
+
+    # Parse time
+    start_time, end_time = time_range.split(" - ")
+    start_datetime = datetime.strptime(start_time, "%I:%M%p")
+    end_datetime = datetime.strptime(end_time, "%I:%M%p")
+
+    start_datetime = date_object.replace(hour=start_datetime.hour, minute=start_datetime.minute)
+    end_datetime = date_object.replace(hour=end_datetime.hour, minute=end_datetime.minute)
+    return start_datetime, end_datetime
+
+
+def get_event_info(driver):
+    event_id = driver.current_url.split("/")[-1]
+    event_details_element = driver.find_element(By.CSS_SELECTOR, "[class^='styles_program-detail-item-container']")
+    event_details = event_details_element.text.split("\n")
+    start_datetime, end_datetime = parse_event_datetime(event_details[0], event_details[2])
+    location = event_details[3] + ", " + event_details[1]
+    level = event_details[4] if len(event_details) >= 5 else None
+    return {
+        "event_id": event_id,
+        "location": location,
+        "start_time": start_datetime,
+        "end_time": end_datetime,
+        "level": level
+    }
+
+
+def get_events(driver, url: str, account_login: bool):
     load_query_results_page(driver, url)
     logger.info(f"Getting events...")
-    event_ids = []
+    events = []
     query_element = get_query_element(driver)
     if "No results" in query_element.text:
-        return event_ids
+        return events
     page_elements = get_page_elements(query_element)
     for page in range(len(page_elements)):
         _, event_elements = refresh_elements(driver, url, page, account_login)
         logger.info(f"Found {len(event_elements)} open event(s) on page {page + 1}.")
         for idx in range(len(event_elements)):
             event_elements[idx].find_elements(By.XPATH, ".//div[@dir]")[0].click()
-            time.sleep(1)
-            event_id = driver.current_url.split("/")[-1]
-            event_ids.append(event_id)
+            time.sleep(5)
+            event_info = get_event_info(driver)
+            events.append(event_info)
             _, event_elements = refresh_elements(driver, url, page, account_login)
-            logger.info(f"Retrieved event ID: {event_id}")
+            logger.info(f"Retrieved event ID: {event_info['event_id']}")
     logger.info("Retrieved all event IDs.")
-    return event_ids
+    return events

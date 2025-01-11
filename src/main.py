@@ -37,14 +37,15 @@ def main(url, filepath):
         config.VOLO_USERNAME,
         config.VOLO_PASSWORD
     )
-    event_ids = web_scraper.get_event_ids(driver, url, account_login)
-    existing_event_ids = [] if not event_ids else event_log.read_event_ids(filepath)
-    event_ids = list(set(event_ids) - set(existing_event_ids))
+    events = web_scraper.get_events(driver, url, account_login)
+    queried_event_ids = [event["event_id"] for event in events]
+    existing_event_ids = [] if not events else event_log.read_event_ids(filepath)
+    event_ids = list(set(queried_event_ids) - set(existing_event_ids))
     if not event_ids:
         logger.info("No new open event IDs.")
     else:
         event_log.write_event_ids(filepath, event_ids)
-        emailer.send_email(**emailer.create_email_content_events(event_ids))
+        emailer.send_email(**emailer.create_email_content_events(events))
     driver.quit()
 
 

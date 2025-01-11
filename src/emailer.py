@@ -7,15 +7,25 @@ from src import config
 logger = logging.getLogger(__name__)
 
 
-def create_email_content_events(ids):
-    links = ["https://www.volosports.com/d/" + id for id in ids]
-    links[0] = "\n    " + links[0]
+def event_info_string(event_info, indent=4):
+    indent = " " * indent
+    string = (
+        f"{indent}Date: {event_info['start_time'].strftime('%-m/%-d (%A)')} from "
+        f"{event_info['start_time'].strftime('%-I:%M')} to {event_info['end_time'].strftime('%-I:%M')}"
+    )
+    string += f"\n{indent}Location: {event_info['location']}"
+    if event_info["level"]:
+        string += f"\n{indent}Level: {event_info['level']}"
+    string += f"\n{indent}Link: https://www.volosports.com/d/{event_info['event_id']}"
+    return string
+
+
+def create_email_content_events(events):
+    event_infos = [event_info_string(event) for event in events]
+    event_infos = ["New Volo event(s) found!"] + event_infos
     return {
         "subject": "Volo: New Event Notification",
-        "body": "\n".join([
-            "New Volo event(s) found!",
-            "\n\n    ".join(links)
-        ])
+        "body": "\n\n".join(event_infos)
     }
 
 

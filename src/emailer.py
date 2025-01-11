@@ -22,7 +22,7 @@ def event_info_string(event_info, indent=4):
 
 def create_email_content_events(events):
     event_infos = [event_info_string(event) for event in events]
-    event_infos = ["New Volo event(s) found!"] + event_infos
+    event_infos = [f"{len(event_infos)} new Volo event(s) found!"] + event_infos
     return {
         "subject": "Volo: New Event Notification",
         "body": "\n\n".join(event_infos)

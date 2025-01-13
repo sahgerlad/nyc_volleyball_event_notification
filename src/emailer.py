@@ -11,7 +11,7 @@ def event_info_string(event_info, indent=4):
     indent = " " * indent
     string = (
         f"{indent}Date: {event_info['start_time'].strftime('%-m/%-d (%A)')} from "
-        f"{event_info['start_time'].strftime('%-I:%M')} to {event_info['end_time'].strftime('%-I:%M')}"
+        f"{event_info['start_time'].strftime('%-I:%M %p')} to {event_info['end_time'].strftime('%-I:%M %p')}"
     )
     string += f"\n{indent}Location: {event_info['location']}"
     if event_info["level"]:

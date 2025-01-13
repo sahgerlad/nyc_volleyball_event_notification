@@ -1,10 +1,12 @@
 import logging
 import time
-from datetime import datetime
+from datetime import datetime as dt
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+
+from src import config
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +29,12 @@ def login_to_account(driver, url, volo_account, volo_password):
     driver.switch_to.window(driver.window_handles[1])
     try:
         driver.get(url)
-        time.sleep(5)
+        time.sleep(config.SLEEP_TIME_PAGE_LOAD)
         driver.find_element(By.ID, "credential").send_keys(volo_account)
         password_element = driver.find_element(By.ID, "password")
         password_element.send_keys(volo_password)
         password_element.send_keys(Keys.RETURN)
-        time.sleep(1)
+        time.sleep(config.SLEEP_TIME_URL_LOAD)
         if driver.current_url == url:
             logger.error(f"Login attempt to Volo account unsuccessful.")
         else:
@@ -48,7 +50,7 @@ def login_to_account(driver, url, volo_account, volo_password):
 def load_query_results_page(driver, url):
     logger.debug(f"Loading Volo query page: {url}...")
     driver.get(url)
-    time.sleep(5)  # Add delay for page to fully load
+    time.sleep(config.SLEEP_TIME_PAGE_LOAD)
     logger.debug(f"Volo query page loaded.")
 
 
@@ -77,7 +79,7 @@ def refresh_elements(driver, url, page, account_login):
     load_query_results_page(driver, url)
     query_element = get_query_element(driver)
     get_page_elements(query_element)[page].click()
-    time.sleep(1)
+    time.sleep(config.SLEEP_TIME_ELEMENT_LOAD)
     query_element = get_query_element(driver)
     event_elements = get_event_elements(query_element, account_login)
     return query_element, event_elements
@@ -104,22 +106,17 @@ def get_event_elements(query_element, account_login: bool):
     return valid_event_elements
 
 
-def parse_event_datetime(date_string, time_range):
-    # Parse date
-    date_object = datetime.strptime(date_string, "%a, %B %d")
-    current_date = datetime.now()
-    date_object = date_object.replace(year=current_date.year)
-    if date_object < current_date:
-        date_object = date_object.replace(year=current_date.year + 1)
-
-    # Parse time
-    start_time, end_time = time_range.split(" - ")
-    start_datetime = datetime.strptime(start_time, "%I:%M%p")
-    end_datetime = datetime.strptime(end_time, "%I:%M%p")
-
-    start_datetime = date_object.replace(hour=start_datetime.hour, minute=start_datetime.minute)
-    end_datetime = date_object.replace(hour=end_datetime.hour, minute=end_datetime.minute)
-    return start_datetime, end_datetime
+def parse_event_datetime(str_date, time_range):
+    dt_start = dt.strptime(str_date, "%a, %B %d")
+    str_start_time, str_end_time = time_range.split(" - ")
+    dt_start_time = dt.strptime(str_start_time, "%I:%M%p")
+    dt_current = dt.now()
+    dt_start = dt_start.replace(year=dt_current.year, hour=dt_start_time.hour, minute=dt_start_time.minute)
+    if dt_current > dt_start:
+        dt_start = dt_start.replace(year=dt_current.year + 1)
+    dt_end_time = dt.strptime(str_end_time, "%I:%M%p")
+    dt_end = dt_start.replace(hour=dt_end_time.hour, minute=dt_end_time.minute)
+    return dt_start, dt_end
 
 
 def get_event_info(driver):
@@ -151,7 +148,7 @@ def get_events(driver, url: str, account_login: bool):
         logger.info(f"Found {len(event_elements)} open event(s) on page {page + 1}.")
         for idx in range(len(event_elements)):
             event_elements[idx].find_elements(By.XPATH, ".//div[@dir]")[0].click()
-            time.sleep(5)
+            time.sleep(config.SLEEP_TIME_PAGE_LOAD)
             event_info = get_event_info(driver)
             events.append(event_info)
             _, event_elements = refresh_elements(driver, url, page, account_login)

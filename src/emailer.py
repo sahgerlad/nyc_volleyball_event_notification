@@ -16,6 +16,8 @@ def event_info_string(event_info, indent=4):
     string += f"\n{indent}Location: {event_info['location']}"
     if event_info["level"]:
         string += f"\n{indent}Level: {event_info['level']}"
+    if event_info['registered']:
+        string += f"\n{indent}Registered: {event_info['registered']}"
     string += f"\n{indent}Link: https://www.volosports.com/d/{event_info['event_id']}"
     return string
 

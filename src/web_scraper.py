@@ -1,6 +1,8 @@
 import logging
 import time
 from datetime import datetime as dt
+
+import selenium.common
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -150,8 +152,30 @@ def get_events(driver, url: str, account_login: bool):
             event_elements[idx].find_elements(By.XPATH, ".//div[@dir]")[0].click()
             time.sleep(config.SLEEP_TIME_PAGE_LOAD)
             event_info = get_event_info(driver)
+            registration_confirmed = False
+            if account_login and (event_info["start_time"] - dt.now()).total_seconds() > config.SIGNUP_NOTICE:
+                registration_confirmed = event_registration(driver)
+            event_info["registered"] = registration_confirmed
             events.append(event_info)
             _, event_elements = refresh_elements(driver, url, page, account_login)
-            logger.info(f"Retrieved event ID: {event_info['event_id']}")
+            logger.info(
+                f"Retrieved event ID: {event_info['event_id']} and registration {'not ' if not registration_confirmed else ''}confirmed"
+            )
     logger.info("Retrieved all event IDs.")
     return events
+
+
+def event_registration(driver):
+    checkbox_elements = driver.find_elements(By.CSS_SELECTOR, "input[type='checkbox']")
+    for element in checkbox_elements:
+        element.click()
+    register_element = driver.find_element(By.XPATH, "//button[contains(text(), 'Register')]")
+    register_element.click()
+    time.sleep(config.SLEEP_TIME_PAGE_LOAD)
+    registration_confirmed = False
+    try:
+        driver.find_element(By.XPATH, "//*[contains(text(), 'Your spot has been confirmed!')]")
+        registration_confirmed = True
+    except selenium.common.NoSuchElementException:
+        logger.warning("Attempt to register for event but could not identify confirmation")
+    return registration_confirmed

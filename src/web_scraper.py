@@ -154,7 +154,10 @@ def get_events(driver, url: str, account_login: bool):
             event_info = get_event_info(driver)
             registration_confirmed = False
             if account_login and (event_info["start_time"] - dt.now()).total_seconds() > config.SIGNUP_NOTICE:
-                registration_confirmed = event_registration(driver)
+                try:
+                    registration_confirmed = event_registration(driver)
+                except Exception as e:
+                    logger.warning(f"Registration failed: {e}")
             event_info["registered"] = registration_confirmed
             events.append(event_info)
             _, event_elements = refresh_elements(driver, url, page, account_login)

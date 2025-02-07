@@ -80,6 +80,8 @@ def get_page_elements(query_element):
 def refresh_elements(driver, url, page, account_login):
     load_query_results_page(driver, url)
     query_element = get_query_element(driver)
+    if "No results" in query_element.text:
+        return None, []
     get_page_elements(query_element)[page].click()
     time.sleep(config.SLEEP_TIME_ELEMENT_LOAD)
     query_element = get_query_element(driver)
@@ -145,27 +147,55 @@ def get_events(driver, url: str, account_login: bool):
     if "No results" in query_element.text:
         return events
     page_elements = get_page_elements(query_element)
-    for page in range(len(page_elements)):
-        _, event_elements = refresh_elements(driver, url, page, account_login)
+    page = 0
+    while page < len(page_elements):
+        if page == 0:
+            event_elements = get_event_elements(query_element, account_login)
+        else:
+            _, event_elements = refresh_elements(driver, url, page, account_login)
         logger.info(f"Found {len(event_elements)} open event(s) on page {page + 1}.")
-        for idx in range(len(event_elements)):
+        idx = 0
+        while idx < len(event_elements):
             event_elements[idx].find_elements(By.XPATH, ".//div[@dir]")[0].click()
             time.sleep(config.SLEEP_TIME_PAGE_LOAD)
             event_info = get_event_info(driver)
+            if any(d["event_id"] == event_info["event_id"] for d in events):
+                _, event_elements = refresh_elements(driver, url, page, account_login)
+                idx += 1
+                continue
             registration_confirmed = False
-            if account_login and (event_info["start_time"] - dt.now()).total_seconds() > config.SIGNUP_NOTICE:
+            if (
+                    account_login
+                    and (event_info["start_time"] - dt.now()).total_seconds() > config.SIGNUP_NOTICE
+                    and check_free_event(driver)
+            ):
                 try:
                     registration_confirmed = event_registration(driver)
                 except Exception as e:
                     logger.warning(f"Registration failed: {e}")
             event_info["registered"] = registration_confirmed
-            events.append(event_info)
-            _, event_elements = refresh_elements(driver, url, page, account_login)
             logger.info(
                 f"Retrieved event ID: {event_info['event_id']} and registration {'not ' if not registration_confirmed else ''}confirmed"
             )
+            events.append(event_info)
+            _, event_elements = refresh_elements(driver, url, page, account_login)
+            if not registration_confirmed:
+                idx += 1
+        page += 1
+        query_element = get_query_element(driver)
+        if "No results" in query_element.text:
+            break
+        page_elements = get_page_elements(query_element)
     logger.info("Retrieved all event IDs.")
     return events
+
+
+def check_free_event(driver):
+    page_source = driver.page_source
+    free_event = False
+    if "$0.00" in page_source[page_source.index("Order Total"):]:
+        free_event = True
+    return free_event
 
 
 def event_registration(driver):

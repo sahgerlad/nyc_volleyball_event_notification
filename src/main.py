@@ -36,15 +36,13 @@ def main(url, filepath):
         config.VOLO_USERNAME,
         config.VOLO_PASSWORD
     )
-    events = web_scraper.get_events(driver, url, account_login)
-    queried_event_ids = [event["event_id"] for event in events]
-    existing_event_ids = [] if not events else event_log.read_event_ids(filepath)
-    event_ids = list(set(queried_event_ids) - set(existing_event_ids))
-    if not event_ids:
+    existing_event_ids = event_log.read_event_ids(filepath)
+    new_events = web_scraper.get_events(driver, url, account_login, existing_event_ids)
+    if not new_events:
         logger.info("No new open event IDs.")
     else:
-        event_log.write_event_ids(filepath, event_ids)
-        emailer.send_email(**emailer.create_email_content_events(events))
+        event_log.write_event_ids(filepath, [event["event_id"] for event in new_events])
+        emailer.send_email(**emailer.create_email_content_events(new_events))
     driver.quit()
 
 
@@ -62,7 +60,7 @@ if __name__ == "__main__":
         except Exception as e:
             retry_counter += 1
             logger.warning(f"Execution failed. Incrementing retry counter: {retry_counter}")
-            logger.error(e)
+            logger.exception(e)
             if retry_counter == config.RETRY_LIMIT:
                 logger.fatal("Retry limit exceeded.")
                 emailer.send_email(**emailer.create_email_content_job_failure(e))

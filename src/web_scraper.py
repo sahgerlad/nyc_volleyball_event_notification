@@ -43,7 +43,7 @@ def login_to_account(driver, url, volo_account, volo_password):
             account_login = True
             logger.info(f"Login to Volo account successful.")
     except Exception as e:
-        logger.warning(f"Error when attempting to log into the Volo account: {e}")
+        logger.exception(f"Error when attempting to log into the Volo account: {e}")
     driver.close()
     driver.switch_to.window(driver.window_handles[0])
     return account_login
@@ -139,7 +139,7 @@ def get_event_info(driver):
     }
 
 
-def get_events(driver, url: str, account_login: bool):
+def get_events(driver, url: str, account_login: bool, existing_events: list = None):
     load_query_results_page(driver, url)
     logger.info(f"Getting events...")
     events = []
@@ -156,35 +156,45 @@ def get_events(driver, url: str, account_login: bool):
         logger.info(f"Found {len(event_elements)} open event(s) on page {page + 1}.")
         idx = 0
         while idx < len(event_elements):
-            event_elements[idx].find_elements(By.XPATH, ".//div[@dir]")[0].click()
-            time.sleep(config.SLEEP_TIME_PAGE_LOAD)
-            event_info = get_event_info(driver)
-            if any(d["event_id"] == event_info["event_id"] for d in events):
-                _, event_elements = refresh_elements(driver, url, page, account_login)
-                idx += 1
-                continue
-            registration_confirmed = False
-            if (
+            try:
+                event_elements[idx].find_elements(By.XPATH, ".//div[@dir]")[0].click()
+                time.sleep(config.SLEEP_TIME_PAGE_LOAD)
+                event_info = get_event_info(driver)
+                if (
+                    event_info["event_id"] in existing_events
+                    or any(d["event_id"] == event_info["event_id"] for d in events)
+                    or "You are already registered!" in driver.page_source
+                ):
+                    idx += 1
+                    logger.info(
+                        f"Found event ID {event_info['event_id']} but event ID is not new."
+                    )
+                    continue
+                registration_confirmed = False
+                if (
                     account_login
                     and (event_info["start_time"] - dt.now()).total_seconds() > config.SIGNUP_NOTICE
                     and check_free_event(driver)
-            ):
-                try:
+                ):
                     registration_confirmed = event_registration(driver)
-                except Exception as e:
-                    logger.warning(f"Registration failed: {e}")
-            event_info["registered"] = registration_confirmed
-            logger.info(
-                f"Retrieved event ID: {event_info['event_id']} and registration {'not ' if not registration_confirmed else ''}confirmed"
-            )
-            events.append(event_info)
-            _, event_elements = refresh_elements(driver, url, page, account_login)
-            if not registration_confirmed:
+                event_info["registered"] = registration_confirmed
+                logger.info(
+                    f"Retrieved event ID {event_info['event_id']} and registration is {'not ' if not registration_confirmed else ''}confirmed."
+                )
+                events.append(event_info)
+                if not registration_confirmed:
+                    idx += 1
+            except Exception as e:
+                logger.exception(f"Exception encountered while collecting event index {idx} on page {page + 1}: {e}")
                 idx += 1
-        page += 1
+                logger.info(f"Index incremented to {idx}")
+            finally:
+                _, event_elements = refresh_elements(driver, url, page, account_login)
+        load_query_results_page(driver, url)
         query_element = get_query_element(driver)
         if "No results" in query_element.text:
             break
+        page += 1
         page_elements = get_page_elements(query_element)
     logger.info("Retrieved all event IDs.")
     return events
@@ -210,5 +220,5 @@ def event_registration(driver):
         driver.find_element(By.XPATH, "//*[contains(text(), 'Your spot has been confirmed!')]")
         registration_confirmed = True
     except selenium.common.NoSuchElementException:
-        logger.warning("Attempt to register for event but could not identify confirmation")
+        logger.warning("Attempted to register for event but could not identify confirmation")
     return registration_confirmed

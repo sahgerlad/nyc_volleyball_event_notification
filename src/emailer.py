@@ -2,6 +2,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import logging
+
 from src import config
 
 logger = logging.getLogger(__name__)
@@ -57,4 +58,4 @@ def send_email(subject, body):
             server.sendmail(config.EMAIL_SENDER, config.EMAIL_RECIPIENT, msg.as_string())
         logger.info("Email sent successfully.")
     except Exception as e:
-        logger.error(f"Failed to send email: {e}")
+        logger.exception(f"Failed to send email: {e}")

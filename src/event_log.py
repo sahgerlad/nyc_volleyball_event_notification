@@ -1,36 +1,31 @@
 import logging
 import os
-import csv
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
 
-def create_event_log_file(file_path):
-    if not os.path.exists(file_path):
-        logger.info(f"Creating event log file in {file_path}...")
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, "w"):
-            pass
-        logger.info("Event log file created.")
+def read_local_events(file_path) -> pd.DataFrame:
+    logger.info(f"Reading local events from {file_path}...")
+    if os.path.exists(file_path):
+        df_events = pd.read_csv(file_path)
+    else:
+        df_events = pd.DataFrame({"organization": [], "event_id": []})
+        df_events = df_events.astype({"organization": str, "event_id": str})
+    logger.info(f"Retrieved {len(df_events)} event IDs.")
+    return df_events
+
+
+def write_events(file_path: str, df_events: pd.DataFrame) -> None:
+    logger.info(f"Writing events to {file_path}...")
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+    df_events.to_csv(file_path, index=False)
+    logger.info(f"{len(df_events)} events written.")
     return
 
 
-def read_event_ids(file_path):
-    logger.info(f"Reading event IDs from {file_path}...")
-    create_event_log_file(file_path)
-    with open(file_path, "r", newline="") as file:
-        reader = csv.reader(file)
-        event_ids = [row[0] for row in reader]
-    logger.info(f"Retrieved {len(event_ids)} event IDs.")
-    return event_ids
-
-
-def write_event_ids(file_path, event_ids):
-    logger.info(f"Writing event IDs to {file_path}...")
-    create_event_log_file(file_path)
-    with open(file_path, "a", newline="") as file:
-        writer = csv.writer(file)
-        for event_id in set(event_ids):
-            writer.writerow([event_id])
-    logger.info(f"{len(event_ids)} new event IDs written.")
-    return
+def concat_dfs(df1: pd.DataFrame, df2: pd.DataFrame) -> pd.DataFrame:
+    all_columns = set(df1.columns).union(set(df2.columns))
+    df1 = df1.reindex(columns=list(all_columns))
+    df2 = df2.reindex(columns=list(all_columns))
+    return pd.concat([df1, df2], ignore_index=True)

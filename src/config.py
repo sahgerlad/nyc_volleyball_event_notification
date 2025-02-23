@@ -7,7 +7,10 @@ EMAIL_RECIPIENT = os.environ.get("EMAIL_RECIPIENT")
 APP_PASSWORD = os.environ.get("APP_PASSWORD")
 
 # Main config
-SLEEP_TIME = 900
+FILEPATH_LOG = "log/log_{date}.txt"
+FILEPATH_EVENT_LOG = "data/event_log.csv"
+LOGGER_NAME = "main_logger"
+SLEEP_TIME = 600
 RETRY_LIMIT = 5
 SLEEP_TIME_RETRY = 60
 

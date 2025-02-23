@@ -118,15 +118,19 @@ def get_event_info(driver):
     location = event_details[3] + ", " + event_details[1]
     level = event_details[4] if len(event_details) >= 5 else None
     return {
+        "organization": "Volo",
         "event_id": event_id,
         "location": location,
         "start_time": start_datetime,
         "end_time": end_datetime,
-        "level": level
+        "level": level,
+        "url": f"https://www.volosports.com/d/{event_id}"
     }
 
 
-def get_events(driver, url: str, account_login: bool, existing_events: list = None):
+def get_events(driver, url: str, account_login: bool, existing_events: list = None) -> list[dict]:
+    if existing_events is None:
+        existing_events = []
     load_query_results_page(driver, url)
     logger.info(f"Getting events...")
     events = []

@@ -23,29 +23,43 @@ def event_info_string(event_info, indent=4):
     string += f"\n{indent}Location: {event_info['location']}"
     if event_info["level"]:
         string += f"\n{indent}Level: {event_info['level']}"
-    if event_info['registered']:
+    if event_info.get("registered"):
         string += f"\n{indent}Registered: {event_info['registered']}"
-    string += f"\n{indent}Link: https://www.volosports.com/d/{event_info['event_id']}"
+    if event_info.get("status"):
+        string += f"\n{indent}Status: {event_info['status']}"
+    if event_info.get("registration_date"):
+        string += (
+            f"\n{indent}Registration Open Date: "
+            f"{event_info['registration_date'].strftime(
+                f'%{strftime_modifier}m/%{strftime_modifier}d (%A) %{strftime_modifier}I:%M %p'
+            )}"
+        )
+    string += f"\n{indent}Link: {event_info['url']}"
     return string
 
 
-def create_email_content_events(events):
-    event_infos = [event_info_string(event) for event in events]
-    event_infos = [f"{len(event_infos)} new Volo event(s) found!"] + event_infos
+def create_email_content_events(event_lists, retry_counter):
+    event_infos = []
+    num_events_found = sum(len(events) for events in event_lists)
+    for event_list in event_lists:
+        if event_list:
+            event_infos.append(f"{len(event_list)} new {event_list[0]['organization'].title()} event(s) found!")
+            event_infos.extend(event_info_string(event) for event in event_list)
+    num_jobs_failed = sum(1 for value in retry_counter.values() if value != 0)
+    if num_jobs_failed:
+        for org in retry_counter:
+            if retry_counter[org]:
+                event_infos.append(f"{org.replace("_", " ").title()} job has failed {retry_counter[org]} consecutive times.")
+    subject = "Volleyball Event Notification: "
+    if num_events_found and num_jobs_failed:
+        subject += f"{num_events_found} New Events, {num_jobs_failed} Jobs Failed"
+    elif num_events_found:
+        subject += f"{num_events_found} New Events"
+    elif num_jobs_failed:
+        subject += f"{num_jobs_failed} Jobs Failed"
     return {
-        "subject": "Volo: New Event Notification",
+        "subject": subject,
         "body": "\n\n".join(event_infos)
-    }
-
-
-def create_email_content_job_failure(error):
-    return {
-        "subject": "Volo web scraper job failed",
-        "body": "\n".join([
-            "Volo notification job failed.",
-            "\nError:",
-            f"    {error}"
-        ])
     }
 
 

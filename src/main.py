@@ -53,14 +53,13 @@ async def main_big_city(url: str, df_seen_events: pd.DataFrame = None) -> list[d
         )
         try:
             logger.info(f"Starting Big City scraper on {url}...")
-            seen_event_ids = df_seen_events[df_seen_events["organization"] == "Big City"]["event_id"].to_list()
+            df_seen_events = df_seen_events[df_seen_events["organization"] == "Big City"]
             driver = start_browser(logger=logger)
             new_events = bc_scraper.get_events(driver, url)
             driver.quit()
             retry_counter["big_city"] = 0
-            new_events = bc_scraper.remove_filled_events(new_events)
             new_events = bc_scraper.keep_advanced_events(new_events)
-            new_events = bc_scraper.remove_seen_events(new_events, seen_event_ids)
+            new_events = bc_scraper.remove_seen_events(new_events, df_seen_events)
             logger.info(f"Big City webscrape completed successfully. Found {len(new_events)} new events.")
         except Exception as e:
             retry_counter["big_city"] += 1
@@ -118,6 +117,7 @@ async def main():
         [new_events.extend(event_list) for event_list in event_lists]
         df_new_events = pd.DataFrame(new_events)
         df_events = event_log.concat_dfs(df_seen_events, df_new_events)
+        df_events = df_events.drop_duplicates(subset=["event_id"], keep="last")
         event_log.write_events(config.FILEPATH_EVENT_LOG, df_events)
     logger.info(f"Sleeping for {(config.SLEEP_TIME / 60):.1f} minutes")
     time.sleep(config.SLEEP_TIME)

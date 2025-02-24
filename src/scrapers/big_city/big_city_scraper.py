@@ -2,6 +2,7 @@ import logging
 import time
 from datetime import datetime as dt
 
+import pandas as pd
 from selenium.webdriver.common.by import By
 
 from src import config
@@ -106,25 +107,19 @@ def get_events(driver, url: str) -> list[dict]:
     return events
 
 
-def remove_filled_events(events: list) -> list:
-    logger.info("Removing filled events...")
-    num_total_events = len(events)
-    i = 0
-    while i < len(events):
-        if events[i]["status"] == "Filled":
-            logger.debug(f"Event ID {events.pop(i)['event_id']} removed.")
-        else:
-            i += 1
-    logger.info(f"{num_total_events - len(events)} of {num_total_events} removed. {len(events)} remaining.")
-    return events
-
-
-def remove_seen_events(new_events: list, existing_event_ids: list):
+def remove_seen_events(new_events: list[dict], df_existing_events: pd.DataFrame):
     logger.info("Removing seen events...")
     num_total_events = len(new_events)
     i = 0
     while i < len(new_events):
-        if new_events[i]["event_id"] in existing_event_ids:
+        event_id = new_events[i]["event_id"]
+        status = new_events[i]["status"]
+        if len(
+            df_existing_events[
+                (df_existing_events["event_id"] == event_id) &
+                ((df_existing_events["status"] == status) | (df_existing_events["status"].isin(["Available", "Filled"])))
+            ]
+        ):
             logger.debug(f"Event ID {new_events.pop(i)['event_id']} removed.")
         else:
             i += 1
@@ -132,7 +127,7 @@ def remove_seen_events(new_events: list, existing_event_ids: list):
     return new_events
 
 
-def keep_advanced_events(events: list):
+def keep_advanced_events(events: list[dict]):
     logger.info("Keeping only advanced events...")
     num_total_events = len(events)
     i = 0
@@ -143,3 +138,5 @@ def keep_advanced_events(events: list):
             i += 1
     logger.info(f"{num_total_events - len(events)} of {num_total_events} removed. {len(events)} remaining.")
     return events
+
+

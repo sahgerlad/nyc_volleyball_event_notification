@@ -21,15 +21,15 @@ def load_query_results_page(driver, url: str) -> None:
 def get_event_info(event_element) -> dict:
     event_info = event_element.find_all("td")
     date = dt.strptime(event_info[1].text.strip(), "%a %m/%d").replace(year=dt.now().year)
-    if date < dt.now():
-        date = date.replace(date.year + 1)
     start_datetime = (
         dt.strptime(event_info[4].text.strip().split(" - ")[0], f"%I:%M %p")
         .replace(year=date.year, month=date.month, day=date.day)
     )
+    if start_datetime < dt.now():
+        start_datetime = start_datetime.replace(date.year + 1)
     end_datetime = (
         dt.strptime(event_info[4].text.strip().split(" - ")[1], f"%I:%M %p")
-        .replace(year=date.year, month=date.month, day=date.day)
+        .replace(year=start_datetime.year, month=start_datetime.month, day=start_datetime.day)
     )
     return {
         "organization": nyu_config.ORG_DISPLAY_NAME,

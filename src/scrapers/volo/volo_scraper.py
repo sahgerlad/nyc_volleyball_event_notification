@@ -39,9 +39,16 @@ def login_to_account(driver, url, volo_account, volo_password):
 
 def load_query_results_page(driver, url):
     logger.debug(f"Loading {volo_config.ORG_DISPLAY_NAME} query page: {url}...")
+    start = time.time()
     driver.get(url)
+    while driver.execute_script("return document.readyState") != "complete":
+        if time.time() - start < config.LOAD_PAGE_LIMIT:
+            time.sleep(config.SLEEP_TIME_ELEMENT_LOAD)
+        else:
+            raise RuntimeError(f"Page load exceeded load limit of {config.LOAD_PAGE_LIMIT} seconds.")
+    end = time.time()
     time.sleep(config.SLEEP_TIME_PAGE_LOAD)
-    logger.debug(f"{volo_config.ORG_DISPLAY_NAME} query page loaded.")
+    logger.debug(f"{volo_config.ORG_DISPLAY_NAME} query page loaded in {end - start} seconds.")
 
 
 def get_query_element(driver):

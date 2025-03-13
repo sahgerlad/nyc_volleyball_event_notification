@@ -32,7 +32,7 @@ def get_event_info(event_element) -> dict:
     status = "Available"
     if event_details[0] in ["Filled", "Upcoming"]:
         status = event_details.pop(0)
-    if len(event_details[0]) < 3:
+    if event_details[0] in ["A", "BB", "All Skill Levels"]:
         event_details.pop(0)
     level = event_details.pop(0).split(" ")[0]
     event_times = event_details.pop(0).split(" - ")

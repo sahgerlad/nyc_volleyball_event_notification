@@ -153,8 +153,12 @@ async def main():
         new_events = []
         [new_events.extend(event_list) for event_list in event_lists]
         df_new_events = pd.DataFrame(new_events)
-        df_events = event_log.concat_dfs(df_seen_events, df_new_events)
-        df_events = df_events.drop_duplicates(subset=["event_id"], keep="last")
+        df_events = (
+            event_log
+            .concat_dfs(df_seen_events, df_new_events)
+            .drop_duplicates(subset=["event_id"], keep="last")
+        )
+        df_events = df_events[df_events["start_time"] > dt.datetime.now()]
         event_log.write_events(config.FILEPATH_EVENT_LOG, df_events)
     logger.info(f"Sleeping for {(config.SLEEP_TIME / 60):.1f} minutes")
     time.sleep(config.SLEEP_TIME)

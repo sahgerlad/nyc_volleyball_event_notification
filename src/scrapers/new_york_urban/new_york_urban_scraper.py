@@ -2,6 +2,7 @@ import logging
 import time
 from datetime import datetime as dt
 
+import pandas as pd
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 
@@ -37,7 +38,7 @@ def get_event_info(event_element) -> dict:
         "location": event_info[2].text.strip(),
         "start_time": start_datetime,
         "end_time": end_datetime,
-        "level": event_info[3].text.strip().split(" ")[0],
+        "level": event_info[3].text.strip(),
         "status": event_info[6].text.strip(),
         "price": event_info[5].text.strip(),
         "url": nyu_config.URL_QUERY,
@@ -84,12 +85,15 @@ def remove_full_events(events: list) -> list:
     return events
 
 
-def remove_seen_events(new_events: list, existing_event_ids: list):
+def remove_seen_events(new_events: list, df_existing_events: pd.DataFrame):
     logger.info("Removing seen events...")
     num_total_events = len(new_events)
+    set_existing_events = set(
+        df_existing_events.apply(lambda x: (x["start_time"].to_pydatetime(), x["location"], x["level"]), axis=1)
+    )
     i = 0
     while i < len(new_events):
-        if new_events[i]["event_id"] in existing_event_ids:
+        if (new_events[i]["start_time"], new_events[i]["location"], new_events[i]["level"]) in set_existing_events:
             logger.debug(f"Event ID {new_events.pop(i)['event_id']} removed.")
         else:
             i += 1

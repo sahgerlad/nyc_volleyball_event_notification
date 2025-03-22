@@ -83,14 +83,13 @@ async def main_new_york_urban(url: str, df_seen_events: pd.DataFrame = None) -> 
             nyu_config.LOGGER_NAME
         )
         logger.info(f"Starting {nyu_config.ORG_DISPLAY_NAME} scraper on {url}...")
-        seen_event_ids = df_seen_events[df_seen_events["organization"] == nyu_config.ORG_DISPLAY_NAME]["event_id"].to_list()
         driver = start_browser(logger=logger)
         try:
             new_events = nyu_scraper.get_events(driver, url)
             retry_counter[nyu_config.ORGANIZATION] = 0
             new_events = nyu_scraper.remove_beginner_events(new_events)
             new_events = nyu_scraper.remove_full_events(new_events)
-            new_events = nyu_scraper.remove_seen_events(new_events, seen_event_ids)
+            new_events = nyu_scraper.remove_seen_events(new_events, df_seen_events)
             for event in new_events:
                 logger.info(f"Found new event ID: {event['event_id']}")
             logger.info(f"{nyu_config.ORG_DISPLAY_NAME} webscrape completed successfully. Found {len(new_events)} new events.")

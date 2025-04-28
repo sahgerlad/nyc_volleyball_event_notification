@@ -56,8 +56,8 @@ async def main_big_city(url: str, df_seen_events: pd.DataFrame = None) -> list[d
         )
         logger.info(f"Starting {bc_config.ORG_DISPLAY_NAME} scraper on {url}...")
         df_seen_events = df_seen_events[df_seen_events["organization"] == bc_config.ORG_DISPLAY_NAME]
-        driver = start_browser(logger=logger)
         try:
+            driver = start_browser(logger=logger)
             new_events = bc_scraper.get_events(driver, url)
             retry_counter[bc_config.ORGANIZATION] = 0
             new_events = bc_scraper.keep_advanced_events(new_events)
@@ -83,8 +83,8 @@ async def main_new_york_urban(url: str, df_seen_events: pd.DataFrame = None) -> 
             nyu_config.LOGGER_NAME
         )
         logger.info(f"Starting {nyu_config.ORG_DISPLAY_NAME} scraper on {url}...")
-        driver = start_browser(logger=logger)
         try:
+            driver = start_browser(logger=logger)
             new_events = nyu_scraper.get_events(driver, url)
             retry_counter[nyu_config.ORGANIZATION] = 0
             new_events = nyu_scraper.remove_beginner_events(new_events)
@@ -112,8 +112,8 @@ async def main_volo(url: str, df_seen_events: pd.DataFrame = None) -> list[dict]
         )
         logger.info(f"Starting {volo_config.ORG_DISPLAY_NAME} scraper on {url}...")
         seen_event_ids = df_seen_events[df_seen_events["organization"] == volo_config.ORG_DISPLAY_NAME]["event_id"].to_list()
-        driver = start_browser(logger=logger)
         try:
+            driver = start_browser(logger=logger)
             account_login = volo_scraper.login_to_account(
                 driver,
                 volo_config.URL_ACCOUNT_LOGIN,

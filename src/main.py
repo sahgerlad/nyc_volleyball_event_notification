@@ -60,6 +60,7 @@ async def main_big_city(url: str, df_seen_events: pd.DataFrame = None) -> tuple[
         playwright, browser, page = await start_browser(logger=logger)
         new_events = await bc_scraper.get_events(page, url)
         new_events = bc_scraper.keep_advanced_events(new_events)
+        new_events = bc_scraper.keep_open_events(new_events)
         new_events = bc_scraper.remove_seen_events(new_events, df_seen_events)
         for event in new_events:
             logger.info(f"Found new event ID: {event['event_id']}")

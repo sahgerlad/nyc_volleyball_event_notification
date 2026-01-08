@@ -1,4 +1,5 @@
-URL_QUERY = "https://bigcityvolleyball.com/adult-open-play"
+BASE_URL = "https://app.bigcityvolleyball.com"
+URL_QUERY = "https://app.bigcityvolleyball.com/big-city-volleyball/tab/open-play"
 
 ORGANIZATION = "big_city"
 ORG_DISPLAY_NAME = "Big City"

@@ -1,5 +1,7 @@
 import logging
+import re
 from datetime import datetime as dt
+from urllib.parse import urljoin
 
 import pandas as pd
 
@@ -9,48 +11,72 @@ from src.scrapers.big_city import big_city_config as bc_config
 logger = logging.getLogger(bc_config.LOGGER_NAME)
 
 
-async def load_query_results_page(page, url: str) -> None:
+async def load_query_results_page(page, url: str):
     logger.debug(f"Loading {bc_config.ORG_DISPLAY_NAME} query page: {url}...")
     await page.goto(url)
     await page.wait_for_load_state("networkidle")
-    iframe = page.frame_locator("iframe[src*='opensports.net']")
     while True:
-        load_more_button = iframe.locator("xpath=//span[text()='Load More']")
+        load_more_button = page.locator("text=Load More")
         if await load_more_button.count() == 0:
             break
         await load_more_button.first.click()
         await page.wait_for_timeout(config.SLEEP_TIME_URL_LOAD)
     logger.debug(f"{bc_config.ORG_DISPLAY_NAME} query page loaded.")
-    return iframe
+    return page
 
 
 async def get_event_info(event_locator) -> dict:
-    url = await event_locator.locator("a").first.get_attribute("href")
-    event_id = url.split("/")[4].split("?")[0]
+    url = await event_locator.get_attribute("href")
+    if url and url.startswith("/"):
+        url = urljoin(bc_config.BASE_URL, url)
+    slug = url.split("/")[-1].split("?")[0].rstrip("-")
+    event_id = slug.rsplit("-", 1)[-1]
     event_text = await event_locator.inner_text()
-    event_details = event_text.split("\n")
-    status = "Available"
-    if event_details[0] in ["Filled", "Upcoming"]:
-        status = event_details.pop(0)
-    if event_details[0] in ["A", "BB", "All Skill Levels"]:
-        event_details.pop(0)
-    level = event_details.pop(0).split(" ")[0]
-    event_times = event_details.pop(0).split(" - ")
-    try:
-        start_datetime = dt.strptime(event_times[0], "%b %d, %Y %I:%M %p")
-    except ValueError:
-        start_datetime = dt.strptime(event_times[0], "%b %d %I:%M %p").replace(year=dt.now().year)
+    level_match = re.match(r'^(A|BB|B|All Skill Levels)\s+', event_text)
+    level = level_match.group(1) if level_match else None
+
+    datetime_pattern = r'([A-Za-z]{3})\s+([A-Za-z]{3})\s+(\d{1,2})(?:,\s+(\d{4}))?\s+(\d{1,2}:\d{2}\s+[AP]M)\s+-\s+(\d{1,2}:\d{2}\s+[AP]M)'
+    datetime_match = re.search(datetime_pattern, event_text)
+    if not datetime_match:
+        raise ValueError(f"Could not parse date/time from event text: {event_text[:100]}")
+    day_name, month, day, year, start_time, end_time = datetime_match.groups()
+    if year:
+        start_datetime_str = f"{month} {day}, {year} {start_time}"
+        start_datetime = dt.strptime(start_datetime_str, "%b %d, %Y %I:%M %p")
+    else:
+        start_datetime_str = f"{month} {day} {start_time}"
+        start_datetime = dt.strptime(start_datetime_str, "%b %d %I:%M %p").replace(year=dt.now().year)
         if start_datetime.date() < dt.now().date():
             start_datetime = start_datetime.replace(year=start_datetime.year + 1)
-    if len(event_times[1].split(" ")) > 2:
-        event_times[1] = " ".join(event_times[1].split(" ")[:2])
-    end_datetime = dt.strptime(event_times[1], "%I:%M %p")
-    end_datetime = \
-        dt(start_datetime.year, start_datetime.month, start_datetime.day, end_datetime.hour, end_datetime.minute)
-    location = event_details.pop(0)
-    price = None
-    if event_details:
-        price = event_details.pop(0)
+    end_datetime = dt.strptime(end_time, "%I:%M %p")
+    end_datetime = dt(start_datetime.year, start_datetime.month, start_datetime.day, 
+                      end_datetime.hour, end_datetime.minute)
+    text_after_datetime = event_text[datetime_match.end():]
+    
+    price_match = re.search(r'\|\s+(\$[\d.]+)', event_text)
+    price = price_match.group(1) if price_match else None
+    if price_match:
+        text_after_datetime = text_after_datetime.split("|", 1)[-1].strip()
+    
+    status = "Available"
+    if "Waitlist" in event_text:
+        status = "Waitlist"
+    elif "Filled" in event_text:
+        status = "Filled"
+    elif "Limited Spot" in event_text:
+        status = "Available"
+    
+    text_normalized = re.sub(r'\s+', ' ', text_after_datetime)
+    venue_pattern = r'([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)\s+(?:[A-Z]{1,3}(?:\s+[A-Z]{1,3})+\s*(?:\+\s*\d+|Join|Register)|Join|Register|\+\s*\d+)'
+    venue_match = re.search(venue_pattern, text_normalized)
+    if venue_match:
+        location = venue_match.group(1).strip()
+    else:
+        fallback_pattern = r'(?:all\s+spot\s+filled|going,?\s+all\s+spot\s+filled)\s+([A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*)'
+        fallback_match = re.search(fallback_pattern, text_normalized, re.IGNORECASE)
+        location = fallback_match.group(1).strip() if fallback_match else "Unknown"
+    location = re.sub(r'\s+[A-Z]{1,3}(\s+[A-Z]{1,3})*\s*$', '', location).strip()
+    
     return {
         "organization": bc_config.ORG_DISPLAY_NAME,
         "event_id": event_id,
@@ -92,11 +118,11 @@ async def get_registration_datetime(page, url: str) -> dt:
 
 async def get_events(page, url: str) -> list[dict]:
     logger.info(f"Getting events...")
-    iframe = await load_query_results_page(page, url)
+    page = await load_query_results_page(page, url)
     events = []
-    cards_container = iframe.locator('[class*="Games_cardsContainer"]')
-    event_elements = cards_container.locator("> *")
+    event_elements = page.locator('a[href*="/posts/"]')
     count = await event_elements.count()
+    logger.debug(f"Found {count} event elements.")
     for i in range(count):
         try:
             event_locator = event_elements.nth(i)
@@ -119,13 +145,13 @@ def remove_seen_events(new_events: list[dict], df_existing_events: pd.DataFrame)
     while i < len(new_events):
         event_id = new_events[i]["event_id"]
         status = new_events[i]["status"]
-        if len(
-            df_existing_events[
-                (df_existing_events["event_id"] == event_id) &
-                ((df_existing_events["status"] == status) | (df_existing_events["status"].isin(["Available", "Filled"])))
-            ]
-        ):
-            logger.debug(f"Event ID {new_events.pop(i)['event_id']} removed.")
+        existing_events = df_existing_events[df_existing_events["event_id"] == event_id]
+        if len(existing_events):
+            existing_status = existing_events.iloc[-1]["status"]
+            if not (status == "Available" and existing_status in ["Filled", "Waitlist"]):
+                logger.debug(f"Event ID {new_events.pop(i)['event_id']} removed.")
+            else:
+                i += 1
         else:
             i += 1
     logger.info(f"{num_total_events - len(new_events)} of {num_total_events} removed. {len(new_events)} remaining.")
@@ -137,8 +163,22 @@ def keep_advanced_events(events: list[dict]):
     num_total_events = len(events)
     i = 0
     while i < len(events):
-        if events[i]["level"] != "Advanced":
+        if events[i]["level"] != "A":
             logger.debug(f"Event ID {events.pop(i)['event_id']} removed.")
+        else:
+            i += 1
+    logger.info(f"{num_total_events - len(events)} of {num_total_events} removed. {len(events)} remaining.")
+    return events
+
+
+def keep_open_events(events: list[dict]):
+    logger.info("Keeping only open events (excluding filled and waitlist)...")
+    num_total_events = len(events)
+    i = 0
+    while i < len(events):
+        status = events[i]["status"]
+        if status in ["Filled", "Waitlist"]:
+            logger.debug(f"Event ID {events.pop(i)['event_id']} removed (status: {status}).")
         else:
             i += 1
     logger.info(f"{num_total_events - len(events)} of {num_total_events} removed. {len(events)} remaining.")

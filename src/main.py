@@ -47,35 +47,27 @@ async def start_browser(headless=True, logger=None):
     return playwright, browser, page
 
 
-async def main_big_city(url: str, df_seen_events: pd.DataFrame = None) -> tuple[list[dict], bool]:
+async def main_big_city(df_seen_events: pd.DataFrame = None) -> tuple[list[dict], bool]:
     use_file_logging = os.environ.get("GITHUB_ACTIONS") is None
     logger = create_logger(
         bc_config.FILEPATH_LOG.format(date=dt.date.today().strftime("%Y-%m-%d")) if use_file_logging else None,
         bc_config.LOGGER_NAME
     )
-    logger.info(f"Starting {bc_config.ORG_DISPLAY_NAME} scraper on {url}...")
+    logger.info(f"Starting {bc_config.ORG_DISPLAY_NAME} scraper on {bc_config.API_EVENTS_URL}...")
     df_seen_events = df_seen_events[df_seen_events["organization"] == bc_config.ORG_DISPLAY_NAME]
-    playwright, browser, page = None, None, None
     try:
-        playwright, browser, page = await start_browser(logger=logger)
-        new_events = await bc_scraper.get_events(page, url)
+        new_events = bc_scraper.get_events()
         new_events = bc_scraper.keep_advanced_events(new_events)
         new_events = bc_scraper.keep_open_events(new_events)
         new_events = bc_scraper.remove_seen_events(new_events, df_seen_events)
-        new_events = bc_scraper.mark_members_only_events(new_events)
         for event in new_events:
             logger.info(f"Found new event ID: {event['event_id']} (status: {event['status']})")
-        logger.info(f"{bc_config.ORG_DISPLAY_NAME} webscrape completed successfully. Found {len(new_events)} new events.")
+        logger.info(f"{bc_config.ORG_DISPLAY_NAME} scraper completed successfully. Found {len(new_events)} new events.")
         return new_events, True
     except Exception as e:
         logger.warning(f"Execution failed.")
         logger.exception(e)
         return [], False
-    finally:
-        if browser:
-            await browser.close()
-        if playwright:
-            await playwright.stop()
 
 
 async def main_new_york_urban(url: str, df_seen_events: pd.DataFrame = None) -> tuple[list[dict], bool]:
@@ -148,7 +140,7 @@ async def main():
     logger.info("Starting scraping process...")
     df_seen_events = event_log.read_local_events(config.FILEPATH_EVENT_LOG)    
     scraper_configs = [
-        (main_big_city, bc_config.URL_QUERY, bc_config.ORGANIZATION),
+        (main_big_city, None, bc_config.ORGANIZATION),
         (main_new_york_urban, nyu_config.URL_QUERY, nyu_config.ORGANIZATION),
         # (main_volo, volo_config.URL_QUERY, volo_config.ORGANIZATION)
     ]
@@ -157,7 +149,12 @@ async def main():
     retry_counter = event_log.read_retry_counter(config.FILEPATH_RETRY_COUNTER, retry_counter)
     
     try:
-        tasks = [asyncio.create_task(scraper_func(url, df_seen_events)) for scraper_func, url, _ in scraper_configs]
+        tasks = [
+            asyncio.create_task(
+                scraper_func(url, df_seen_events) if url else scraper_func(df_seen_events)
+            )
+            for scraper_func, url, _ in scraper_configs
+        ]
         results = await asyncio.gather(*tasks)
         all_event_lists = []
         notifiable_event_lists = []

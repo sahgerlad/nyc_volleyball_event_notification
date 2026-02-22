@@ -1,171 +1,117 @@
 import json
 import logging
-import re
 import urllib.request
 from datetime import datetime as dt, timezone
-from urllib.parse import urljoin
+from urllib.parse import urlencode, urljoin
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from src import config
 from src.scrapers.big_city import big_city_config as bc_config
 
 logger = logging.getLogger(bc_config.LOGGER_NAME)
 
 
-def check_members_only(event_url: str) -> bool:
-    """Fetch an event page via HTTP and check if general-public tickets are on sale yet.
+def fetch_events_from_api() -> list[dict]:
+    url = f"{bc_config.API_EVENTS_URL}?{urlencode(bc_config.API_EVENTS_PARAMS)}"
+    logger.info(f"Fetching events from API: {url}")
+    req = urllib.request.Request(url, headers=bc_config.API_HEADERS)
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        body = json.loads(resp.read().decode("utf-8"))
+    if body.get("response") != 200:
+        raise RuntimeError(f"API returned status {body.get('response')}: {body.get('message')}")
+    return body["result"]["data"]
 
-    The page embeds __NEXT_DATA__ with a ticketsSummary. Tickets restricted to
-    members have a non-null ruleID. If every ticket without a ruleID has a
-    salesStart in the future, the event is still in the members-only window.
-    """
-    try:
-        req = urllib.request.Request(event_url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            html = resp.read().decode("utf-8")
-    except Exception as e:
-        logger.warning(f"Failed to fetch event page {event_url}: {e}")
-        return False
 
-    match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html)
-    if not match:
-        logger.warning(f"No __NEXT_DATA__ found for {event_url}")
-        return False
+def parse_event(api_event: dict) -> dict:
+    alias_id = api_event["aliasID"]
+    event_id = alias_id.rsplit("-", 1)[-1]
+    event_url = urljoin(bc_config.BASE_URL, f"/posts/{alias_id}")
 
-    try:
-        data = json.loads(match.group(1))
-        post_list = data["props"]["initialState"]["postDetail"]["list"]
-        if not post_list:
-            return False
-        tickets = post_list[0].get("ticketsSummary", [])
-    except (KeyError, IndexError, json.JSONDecodeError) as e:
-        logger.warning(f"Failed to parse ticket data for {event_url}: {e}")
-        return False
+    tz = ZoneInfo(api_event.get("timeZone", "America/New_York"))
+    start = dt.fromisoformat(api_event["start"].replace("Z", "+00:00")).astimezone(tz)
+    end = dt.fromisoformat(api_event["end"].replace("Z", "+00:00")).astimezone(tz)
 
+    place = api_event.get("place") or {}
+    location = place.get("title", "Unknown")
+
+    level_data = (api_event.get("data") or {}).get("level")
+    level = level_data["title"] if level_data else None
+
+    tickets = api_event.get("ticketsSummary", [])
     public_tickets = [t for t in tickets if t.get("ruleID") is None]
-    if not public_tickets:
-        return True
+    price = public_tickets[0].get("price") if public_tickets else None
+    if price is None and tickets:
+        price = tickets[0].get("price")
 
-    now = dt.now(timezone.utc)
-    return all(
-        dt.fromisoformat(t["salesStart"].replace("Z", "+00:00")) > now
-        for t in public_tickets
-        if t.get("salesStart")
-    )
+    status = _determine_status(api_event, tickets, public_tickets)
 
-
-def mark_members_only_events(events: list[dict]) -> list[dict]:
-    logger.info("Checking events for members-only early access...")
-    for event in events:
-        if check_members_only(event["url"]):
-            logger.info(f"Event ID {event['event_id']} is members-only.")
-            event["status"] = bc_config.MEMBERS_ONLY_STATUS
-    members_only_count = sum(1 for e in events if e["status"] == bc_config.MEMBERS_ONLY_STATUS)
-    logger.info(f"{members_only_count} of {len(events)} events are members-only.")
-    return events
-
-
-async def load_query_results_page(page, url: str):
-    logger.debug(f"Loading {bc_config.ORG_DISPLAY_NAME} query page: {url}...")
-    await page.goto(url)
-    await page.wait_for_load_state("networkidle")
-    while True:
-        load_more_button = page.locator("text=Load More")
-        if await load_more_button.count() == 0:
-            break
-        await load_more_button.first.click()
-        await page.wait_for_timeout(config.SLEEP_TIME_URL_LOAD)
-    logger.debug(f"{bc_config.ORG_DISPLAY_NAME} query page loaded.")
-    return page
-
-
-async def get_event_info(event_locator) -> dict:
-    url = await event_locator.get_attribute("href")
-    if url and url.startswith("/"):
-        url = urljoin(bc_config.BASE_URL, url)
-    slug = url.split("/")[-1].split("?")[0].rstrip("-")
-    event_id = slug.rsplit("-", 1)[-1]
-    event_text = await event_locator.inner_text()
-    level_match = re.match(r'^(A|BB|B|All Skill Levels)\s+', event_text)
-    level = level_match.group(1) if level_match else None
-
-    datetime_pattern = r'([A-Za-z]{3})\s+([A-Za-z]{3})\s+(\d{1,2})(?:,\s+(\d{4}))?\s+(\d{1,2}:\d{2}\s+[AP]M)\s+-\s+(\d{1,2}:\d{2}\s+[AP]M)'
-    datetime_match = re.search(datetime_pattern, event_text)
-    if not datetime_match:
-        raise ValueError(f"Could not parse date/time from event text: {event_text[:100]}")
-    day_name, month, day, year, start_time, end_time = datetime_match.groups()
-    if year:
-        start_datetime_str = f"{month} {day}, {year} {start_time}"
-        start_datetime = dt.strptime(start_datetime_str, "%b %d, %Y %I:%M %p")
-    else:
-        start_datetime_str = f"{month} {day} {start_time}"
-        start_datetime = dt.strptime(start_datetime_str, "%b %d %I:%M %p").replace(year=dt.now().year)
-        if start_datetime.date() < dt.now().date():
-            start_datetime = start_datetime.replace(year=start_datetime.year + 1)
-    end_datetime = dt.strptime(end_time, "%I:%M %p")
-    end_datetime = dt(start_datetime.year, start_datetime.month, start_datetime.day, 
-                      end_datetime.hour, end_datetime.minute)
-    text_after_datetime = event_text[datetime_match.end():]
-    
-    price_match = re.search(r'\|\s+(\$[\d.]+)', event_text)
-    price = price_match.group(1) if price_match else None
-    if price_match:
-        text_after_datetime = text_after_datetime.split("|", 1)[-1].strip()
-    
-    status = "Available"
-    button = event_locator.locator("button")
-    if await button.count() > 0:
-        is_disabled = await button.first.is_disabled()
-        if is_disabled:
-            status = "Upcoming"
-        elif "Waitlist" in event_text:
-            status = "Waitlist"
-        elif "Filled" in event_text:
-            status = "Filled"
-        elif "Limited Spot" in event_text:
-            status = "Available"
-    
-    location_element = event_locator.locator(
-        'span.Card_sectionPadding__H36_y[style*="font-size: 14px"][style*="margin-bottom: 10px"]'
-    )
-    if await location_element.count() > 0:
-        location = (await location_element.first.inner_text()).strip()
-    else:
-        location = "Unknown"
-
-    event_info = {
+    return {
         "organization": bc_config.ORG_DISPLAY_NAME,
         "event_id": event_id,
         "location": location,
-        "start_time": start_datetime,
-        "end_time": end_datetime,
+        "start_time": start.replace(tzinfo=None),
+        "end_time": end.replace(tzinfo=None),
         "level": level,
         "status": status,
-        "price": price.strip("$") if isinstance(price, str) and "$" in price else price,
-        "url": url,
-        "date_found": dt.now()
+        "price": str(price) if price is not None else None,
+        "url": event_url,
+        "date_found": dt.now(),
     }
-    logger.debug(f"Event info: {event_info}")
-    return event_info
 
 
-async def get_events(page, url: str) -> list[dict]:
-    logger.info(f"Getting events...")
-    page = await load_query_results_page(page, url)
+def _determine_status(api_event: dict, tickets: list[dict], public_tickets: list[dict]) -> str:
+    max_attendees = api_event.get("maxAttendees") or 0
+    registered = api_event.get("registeredAttendees") or 0
+    waitlist_count = api_event.get("waitlistUserCount") or 0
+
+    if max_attendees and registered >= max_attendees:
+        if waitlist_count > 0:
+            return "Waitlist"
+        return "Filled"
+
+    now = dt.now(timezone.utc)
+    if public_tickets:
+        all_public_future = all(
+            dt.fromisoformat(t["salesStart"].replace("Z", "+00:00")) > now
+            for t in public_tickets
+            if t.get("salesStart")
+        )
+        if all_public_future:
+            member_tickets = [t for t in tickets if t.get("ruleID") is not None]
+            any_member_on_sale = any(
+                dt.fromisoformat(t["salesStart"].replace("Z", "+00:00")) <= now
+                for t in member_tickets
+                if t.get("salesStart")
+            )
+            if any_member_on_sale:
+                return bc_config.MEMBERS_ONLY_STATUS
+            return "Upcoming"
+    elif tickets:
+        all_future = all(
+            dt.fromisoformat(t["salesStart"].replace("Z", "+00:00")) > now
+            for t in tickets
+            if t.get("salesStart")
+        )
+        if all_future:
+            return "Upcoming"
+
+    return "Available"
+
+
+def get_events() -> list[dict]:
+    logger.info("Getting events...")
+    api_events = fetch_events_from_api()
+    logger.debug(f"API returned {len(api_events)} events.")
     events = []
-    event_elements = page.locator('a[href*="/posts/"]')
-    count = await event_elements.count()
-    logger.debug(f"Found {count} event elements.")
-    for i in range(count):
+    for api_event in api_events:
         try:
-            event_locator = event_elements.nth(i)
-            event_info = await get_event_info(event_locator)
-            events.append(event_info)
-            logger.debug(f"Retrieved event ID {events[-1]['event_id']}.")
+            event = parse_event(api_event)
+            events.append(event)
+            logger.debug(f"Parsed event ID {event['event_id']}.")
         except Exception as e:
-            logger.exception(f"Exception raised when collecting event info for index {i}: {e}")
-    logger.info(f"Retrieved event info for {len(events)} events.")
+            logger.exception(f"Failed to parse event {api_event.get('aliasID', '?')}: {e}")
+    logger.info(f"Parsed {len(events)} events.")
     return events
 
 
@@ -203,12 +149,14 @@ def keep_advanced_events(events: list[dict]):
 
 
 def keep_open_events(events: list[dict]):
-    logger.info("Keeping only events with status 'Available'...")
+    """Keep events that are Available or Members Only (drop Filled, Waitlist, Upcoming)."""
+    logger.info("Keeping only open events...")
     num_total_events = len(events)
+    open_statuses = {"Available", bc_config.MEMBERS_ONLY_STATUS}
     i = 0
     while i < len(events):
         status = events[i]["status"]
-        if status != "Available":
+        if status not in open_statuses:
             logger.debug(f"Event ID {events.pop(i)['event_id']} removed (status: {status}).")
         else:
             i += 1

@@ -1,6 +1,8 @@
+import json
 import logging
 import re
-from datetime import datetime as dt
+import urllib.request
+from datetime import datetime as dt, timezone
 from urllib.parse import urljoin
 
 import pandas as pd
@@ -9,6 +11,59 @@ from src import config
 from src.scrapers.big_city import big_city_config as bc_config
 
 logger = logging.getLogger(bc_config.LOGGER_NAME)
+
+
+def check_members_only(event_url: str) -> bool:
+    """Fetch an event page via HTTP and check if general-public tickets are on sale yet.
+
+    The page embeds __NEXT_DATA__ with a ticketsSummary. Tickets restricted to
+    members have a non-null ruleID. If every ticket without a ruleID has a
+    salesStart in the future, the event is still in the members-only window.
+    """
+    try:
+        req = urllib.request.Request(event_url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            html = resp.read().decode("utf-8")
+    except Exception as e:
+        logger.warning(f"Failed to fetch event page {event_url}: {e}")
+        return False
+
+    match = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html)
+    if not match:
+        logger.warning(f"No __NEXT_DATA__ found for {event_url}")
+        return False
+
+    try:
+        data = json.loads(match.group(1))
+        post_list = data["props"]["initialState"]["postDetail"]["list"]
+        if not post_list:
+            return False
+        tickets = post_list[0].get("ticketsSummary", [])
+    except (KeyError, IndexError, json.JSONDecodeError) as e:
+        logger.warning(f"Failed to parse ticket data for {event_url}: {e}")
+        return False
+
+    public_tickets = [t for t in tickets if t.get("ruleID") is None]
+    if not public_tickets:
+        return True
+
+    now = dt.now(timezone.utc)
+    return all(
+        dt.fromisoformat(t["salesStart"].replace("Z", "+00:00")) > now
+        for t in public_tickets
+        if t.get("salesStart")
+    )
+
+
+def mark_members_only_events(events: list[dict]) -> list[dict]:
+    logger.info("Checking events for members-only early access...")
+    for event in events:
+        if check_members_only(event["url"]):
+            logger.info(f"Event ID {event['event_id']} is members-only.")
+            event["status"] = bc_config.MEMBERS_ONLY_STATUS
+    members_only_count = sum(1 for e in events if e["status"] == bc_config.MEMBERS_ONLY_STATUS)
+    logger.info(f"{members_only_count} of {len(events)} events are members-only.")
+    return events
 
 
 async def load_query_results_page(page, url: str):
@@ -124,7 +179,7 @@ def remove_seen_events(new_events: list[dict], df_existing_events: pd.DataFrame)
         existing_events = df_existing_events[df_existing_events["event_id"] == event_id]
         if len(existing_events):
             existing_status = existing_events.iloc[-1]["status"]
-            if not (status == "Available" and existing_status in ["Filled", "Waitlist"]):
+            if not (status == "Available" and existing_status in ["Filled", "Waitlist", bc_config.MEMBERS_ONLY_STATUS]):
                 logger.debug(f"Event ID {new_events.pop(i)['event_id']} removed.")
             else:
                 i += 1

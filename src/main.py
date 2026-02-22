@@ -62,8 +62,9 @@ async def main_big_city(url: str, df_seen_events: pd.DataFrame = None) -> tuple[
         new_events = bc_scraper.keep_advanced_events(new_events)
         new_events = bc_scraper.keep_open_events(new_events)
         new_events = bc_scraper.remove_seen_events(new_events, df_seen_events)
+        new_events = bc_scraper.mark_members_only_events(new_events)
         for event in new_events:
-            logger.info(f"Found new event ID: {event['event_id']}")
+            logger.info(f"Found new event ID: {event['event_id']} (status: {event['status']})")
         logger.info(f"{bc_config.ORG_DISPLAY_NAME} webscrape completed successfully. Found {len(new_events)} new events.")
         return new_events, True
     except Exception as e:
@@ -158,22 +159,25 @@ async def main():
     try:
         tasks = [asyncio.create_task(scraper_func(url, df_seen_events)) for scraper_func, url, _ in scraper_configs]
         results = await asyncio.gather(*tasks)
-        event_lists = []
+        all_event_lists = []
+        notifiable_event_lists = []
         for (events, success), org_key in zip(results, org_keys):
-            event_lists.append(events)
+            all_event_lists.append(events)
+            notifiable_event_lists.append([e for e in events if e.get("status") != bc_config.MEMBERS_ONLY_STATUS])
             if success:
                 retry_counter[org_key] = 0
             else:
                 retry_counter[org_key] += 1
                 logger.warning(f"{org_key} failed. Retry count: {retry_counter[org_key]}")
         
-        num_events_found = sum(len(event_list) for event_list in event_lists)
-        logger.info(f"Scraping complete. Found {num_events_found} new events.")
-        if num_events_found or any([config.RETRY_LIMIT == retries for retries in retry_counter.values()]):
-            emailer.send_email(**emailer.create_email_content_events(event_lists, retry_counter))
-        if num_events_found:
+        num_notifiable = sum(len(el) for el in notifiable_event_lists)
+        num_all = sum(len(el) for el in all_event_lists)
+        logger.info(f"Scraping complete. Found {num_all} new events ({num_notifiable} notifiable).")
+        if num_notifiable or any([config.RETRY_LIMIT == retries for retries in retry_counter.values()]):
+            emailer.send_email(**emailer.create_email_content_events(notifiable_event_lists, retry_counter))
+        if num_all:
             new_events = []
-            [new_events.extend(event_list) for event_list in event_lists]
+            [new_events.extend(event_list) for event_list in all_event_lists]
             df_new_events = pd.DataFrame(new_events)
             df_events = (
                 event_log
